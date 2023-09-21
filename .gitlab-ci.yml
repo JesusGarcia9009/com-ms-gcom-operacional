@@ -1,0 +1,77 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_HOST: tcp://docker:2375
+  NAMESPACE: codify
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version -DinstallAtEnd=true -DdeployAtEnd=true"
+  IMAGE_CODE: "maven:3.6.3-jdk-11-openj9"
+ 
+image: maven:3.6.3-jdk-11 
+ 
+cache:
+  paths:
+    - .m2/repository/
+    
+stages:
+- cleanup_job
+- java_test_build
+- docker_stage  
+
+cleanup_job:
+  image: $IMAGE_CODE
+  stage: cleanup_job
+  only:
+    - develop
+  before_script:
+    - echo "$(head -1 Dockerfile|awk '{print $2}')"
+    - VAR="$(head -1 Dockerfile|awk '{print $2}')"
+    - echo "Cleaning up"
+  script:
+    - echo $CI_PROJECT_REPOSITORY_LANGUAGES
+    - echo com-ms-gcom-operacional
+    - |
+      if [ ! "$(cat Dockerfile|grep alpine)" ]; then 
+          echo "No se encuentra Alpine como imagen "
+          exit 1; 
+          fi
+
+java_test_build:
+  image: maven:3.6.3-jdk-11-openj9
+  only:
+    - develop
+  stage: java_test_build
+  script:
+  - mvn $MAVEN_CLI_OPTS clean install -DskipTests
+  - export BUILD_DATE=$(date '+%Y%m%d%H%M')
+  - ls target/
+  before_script:
+  - echo $MAVEN_JDK
+  - java --version
+  - ls .m2/
+  - cat .m2/settings.xml
+  artifacts:
+    paths:
+      - target/*.jar
+
+docker_stage:
+  image: docker:dind
+  services:
+    - docker:19.03.0-dind
+  only:
+    - develop
+  stage: docker_stage
+  dependencies:
+    - java_test_build
+  before_script:
+  - export BUILD_DATE=$(date '+%Y%m%d%H%M')
+  - docker login -u jesus.garciaOpen -p Root.1123 registry.gitlab.com
+  script:
+  - ls target/
+  - docker build -t registry.gitlab.com/open6373908/software/gacituacompania/com-ms-gcom-operacional .
+  - docker push registry.gitlab.com/open6373908/software/gacituacompania/com-ms-gcom-operacional
+  after_script:
+  - rm -rf target/
+  - rm -rf .m2/repository/
+
+
